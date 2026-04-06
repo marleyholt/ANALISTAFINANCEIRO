@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analista de Despesas IA | DevGem</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        /* Scroll customizado para tabela */
+        .custom-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen pb-20">
+
+    <script>
+        // 🚨 COLOQUE AQUI A URL DO SEU DEPLOY DO APPS SCRIPT 🚨
+        const API_URL = "SUA_URL_DO_WEB_APP_AQUI"; 
+        
+        const CATEGORIAS = [
+            "Casa e Contas Basicas", "Cartão de crédito", "Alimentação", "Saúde", 
+            "Transporte", "educação", "diversão", "outros", "saques"
+        ];
+    </script>
+
+    <!-- Navbar -->
+    <nav class="bg-indigo-700 text-white p-4 shadow-md sticky top-0 z-40">
+        <div class="container mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <h1 class="text-2xl font-black tracking-tight flex items-center">
+                <i class="fas fa-chart-pie mr-2"></i> FinanIA
+            </h1>
+            
+            <div class="flex gap-2 bg-indigo-800 p-1 rounded-lg">
+                <button onclick="alternarAba('despesas')" id="btnAbaDespesas" class="px-4 py-2 rounded font-bold transition bg-white text-indigo-700 shadow">Visão Geral</button>
+                <button onclick="alternarAba('cartao')" id="btnAbaCartao" class="px-4 py-2 rounded font-bold transition hover:bg-indigo-600 text-indigo-100">Cartão de Crédito</button>
+            </div>
+
+            <button onclick="carregarDadosNuvem()" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-full shadow-lg transition">
+                <i class="fas fa-sync-alt mr-1"></i> Sincronizar
+            </button>
+        </div>
+    </nav>
+
+    <!-- Overlay de Loading Global -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-xl shadow-2xl flex flex-col items-center">
+            <i class="fas fa-robot fa-3x text-indigo-500 animate-bounce mb-3"></i>
+            <h2 class="text-lg font-bold text-slate-700" id="loadingText">A IA está processando...</h2>
+            <p class="text-sm text-slate-500 mt-1">Isso pode levar alguns segundos.</p>
+        </div>
+    </div>
+
+    <!-- Janela Flutuante de Insight (IA) -->
+    <div id="insightWidget" class="fixed bottom-6 right-6 max-w-sm bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded shadow-2xl z-40 hidden fade-in">
+        <div class="flex justify-between items-start mb-1">
+            <h4 class="font-bold text-emerald-800 text-sm"><i class="fas fa-lightbulb text-yellow-500 mr-1"></i> Insight da IA</h4>
+            <button onclick="document.getElementById('insightWidget').classList.add('hidden')" class="text-emerald-600 hover:text-emerald-900"><i class="fas fa-times"></i></button>
+        </div>
+        <p id="insightText" class="text-xs text-emerald-700 italic font-medium leading-relaxed"></p>
+    </div>
+
+    <div class="container mx-auto p-4 mt-6">
+        
+        <!-- Área de Upload Rápido -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+                <h2 class="text-lg font-bold text-slate-800 mb-1" id="tituloUpload">Analisar Novo Extrato</h2>
+                <p class="text-sm text-slate-500">Envie um PDF ou Imagem. A IA organizará tudo magicamente.</p>
+            </div>
+            <div class="flex gap-3">
+                <input type="file" id="fileInput" accept="image/*, application/pdf" class="hidden" onchange="processarArquivo(this)">
+                <button onclick="document.getElementById('fileInput').click()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg shadow-md font-bold transition flex items-center">
+                    <i class="fas fa-cloud-upload-alt mr-2 text-xl"></i> Enviar Arquivo
+                </button>
+            </div>
+        </div>
+
+        <!-- DASHBOARD (KPIs) -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-indigo-500">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Gasto (Mês)</p>
+                <h3 class="text-2xl font-black text-slate-800" id="kpiTotal">R$ 0,00</h3>
+            </div>
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-rose-500">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Maior Categoria</p>
+                <h3 class="text-xl font-bold text-slate-800 truncate" id="kpiCategoriaTop">-</h3>
+            </div>
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-emerald-500">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Transações</p>
+                <h3 class="text-2xl font-black text-slate-800" id="kpiQtd">0</h3>
+            </div>
+            <div id="kpiCartaoExtra" class="bg-gradient-to-br from-indigo-800 to-purple-900 p-5 rounded-xl shadow-md text-white hidden relative overflow-hidden">
+                <i class="fas fa-credit-card absolute -right-2 -bottom-4 text-6xl opacity-20"></i>
+                <p class="text-xs font-bold text-indigo-200 uppercase tracking-wider mb-1">Faturas Futuras (Projeção)</p>
+                <h3 class="text-2xl font-black text-white" id="kpiProjecao">R$ 0,00</h3>
+                <p class="text-[10px] text-indigo-300 mt-1">Baseado em parcelas pendentes</p>
+            </div>
+        </div>
+
+        <!-- Gráfico e Tabela -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Coluna Esquerda: Gráfico -->
+            <div class="lg:col-span-1 bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                <h3 class="font-bold text-slate-700 mb-4 border-b pb-2">Despesas por Categoria</h3>
+                <div class="relative flex-1 min-h-[300px]">
+                    <canvas id="chartCategorias"></canvas>
+                </div>
+            </div>
+
+            <!-- Coluna Direita: Tabela -->
+            <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                <div class="p-4 bg-slate-50 border-b flex justify-between items-center">
+                    <h3 class="font-bold text-slate-700" id="tituloTabela">Extrato Detalhado</h3>
+                    <div class="text-xs text-slate-500 hidden md:block">Clique nos títulos para ordenar</div>
+                </div>
+                
+                <div class="overflow-x-auto custom-scroll flex-1 max-h-[500px]">
+                    <table class="min-w-full text-sm text-left">
+                        <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th class="px-4 py-3 cursor-pointer hover:bg-slate-200" onclick="ordenarTabela('Data')">Data <i class="fas fa-sort ml-1"></i></th>
+                                <th class="px-4 py-3 cursor-pointer hover:bg-slate-200" onclick="ordenarTabela('Nome Simplificado')">Local/Item <i class="fas fa-sort ml-1"></i></th>
+                                <th class="px-4 py-3 cursor-pointer hover:bg-slate-200" onclick="ordenarTabela('Valor Total')">Total (R$) <i class="fas fa-sort ml-1"></i></th>
+                                <th class="px-4 py-3">Categoria (Auto)</th>
+                                <th id="thParcelas" class="px-4 py-3 hidden">Parcelas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbodyDados" class="divide-y divide-slate-100">
+                            <!-- Linhas injetadas via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        let dbDespesas = [];
+        let dbCartao = [];
+        let abaAtiva = 'despesas'; // 'despesas' ou 'cartao'
+        let chartInstance = null;
+        let direcaoOrdenacao = 1;
+
+        // --- INICIALIZAÇÃO ---
+        window.onload = () => {
+            if (API_URL === "SUA_URL_DO_WEB_APP_AQUI") {
+                alert("DevGem Avisa: Você esqueceu de colocar a URL do seu Apps Script na constante API_URL!");
+            } else {
+                carregarDadosNuvem();
+            }
+        };
+
+        // --- CONTROLE DE UI ---
+        function alternarAba(aba) {
+            abaAtiva = aba;
+            
+            // Estilo dos botões
+            const btnDesp = document.getElementById('btnAbaDespesas');
+            const btnCart = document.getElementById('btnAbaCartao');
+            
+            if (aba === 'despesas') {
+                btnDesp.className = "px-4 py-2 rounded font-bold transition bg-white text-indigo-700 shadow";
+                btnCart.className = "px-4 py-2 rounded font-bold transition hover:bg-indigo-600 text-indigo-100";
+                document.getElementById('tituloUpload').innerText = "Analisar Novo Extrato (Conta)";
+                document.getElementById('tituloTabela').innerText = "Extrato Detalhado (Conta Corrente)";
+                document.getElementById('thParcelas').classList.add('hidden');
+                document.getElementById('kpiCartaoExtra').classList.add('hidden');
+            } else {
+                btnCart.className = "px-4 py-2 rounded font-bold transition bg-white text-indigo-700 shadow";
+                btnDesp.className = "px-4 py-2 rounded font-bold transition hover:bg-indigo-600 text-indigo-100";
+                document.getElementById('tituloUpload').innerText = "Analisar Fatura de Cartão";
+                document.getElementById('tituloTabela').innerText = "Fatura Detalhada";
+                document.getElementById('thParcelas').classList.remove('hidden');
+                document.getElementById('kpiCartaoExtra').classList.remove('hidden');
+            }
+
+            renderizarView();
+        }
+
+        function mostrarLoading(mostrar, texto = "Processando...") {
+            document.getElementById('loadingText').innerText = texto;
+            document.getElementById('loadingOverlay').style.display = mostrar ? 'flex' : 'none';
+        }
+
+        function mostrarInsight(texto) {
+            if(!texto) return;
+            document.getElementById('insightText').innerText = texto;
+            const widget = document.getElementById('insightWidget');
+            widget.classList.remove('hidden');
+            // Esconde auto
+            setTimeout(() => widget.classList.add('hidden'), 15000);
+        }
+
+        // --- COMUNICAÇÃO COM BACKEND (SHEETS) ---
+        async function carregarDadosNuvem() {
+            mostrarLoading(true, "Sincronizando banco de dados...");
+            try {
+                const res = await fetch(API_URL);
+                const json = await res.json();
+                
+                dbDespesas = json.despesas || [];
+                dbCartao = json.cartao || [];
+                
+                renderizarView();
+            } catch (erro) {
+                console.error(erro);
+                alert("Erro ao conectar com o banco de dados. Verifique a URL e o CORS.");
+            }
+            mostrarLoading(false);
+        }
+
+        // --- UPLOAD COM IA (GEMINI) ---
+        async function processarArquivo(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            mostrarLoading(true, "Lendo documento. A IA está analisando...");
+
+            try {
+                const base64Ful = await toBase64(file);
+                // Separar o prefixo data:mime... do base64 real
+                const [prefix, data64] = base64Ful.split(',');
+                const mime = prefix.match(/:(.*?);/)[1];
+
+                const payload = {
+                    action: abaAtiva === 'despesas' ? 'upload_extrato' : 'upload_fatura',
+                    mimeType: mime,
+                    arquivoBase64: data64
+                };
+
+                // Envio POST "Cego" com mode no-cors para evitar bloqueio CORS do Google em arquivos pesados
+                // Opcional: Se seu backend retornar JSON perfeitamente, pode tentar sem no-cors, 
+                // mas para Uploads robustos no SheetBackend, no-cors evita muita dor de cabeça.
+                // Como queremos a resposta (Insight), vamos tentar CORS normal primeiro.
+                
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Truque CORS
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await res.json();
+                
+                if (result.status === "SUCESSO") {
+                    mostrarInsight(result.insight);
+                    await carregarDadosNuvem(); // Recarrega os dados fresquinhos
+                } else {
+                    alert("A IA teve dificuldades: " + result.msg);
+                }
+
+            } catch (e) {
+                console.error(e);
+                alert("Falha no upload. O arquivo pode ser muito grande ou a API demorou demais.");
+            }
+            
+            input.value = ''; // Limpa o input
+            mostrarLoading(false);
+        }
+
+        function toBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // --- ATUALIZAÇÃO INLINE ---
+        async function alterarCategoria(rowId, novaCategoria) {
+            const abaNome = abaAtiva === 'despesas' ? 'DespesasGerais' : 'CartaoCredito';
+            
+            // Atualiza localmente para resposta rápida
+            const db = abaAtiva === 'despesas' ? dbDespesas : dbCartao;
+            const item = db.find(i => i.rowId === rowId);
+            if(item) item["Categoria"] = novaCategoria;
+            
+            renderizarView(); // Atualiza gráfico instantaneamente
+            
+            // Envia para o servidor em background
+            const payload = {
+                action: 'update_categoria',
+                aba: abaNome,
+                rowId: rowId,
+                novaCategoria: novaCategoria
+            };
+
+            fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            }).catch(e => console.error("Erro background:", e));
+        }
+
+        // --- RENDERIZAÇÃO E CÁLCULOS ---
+        function renderizarView() {
+            const dados = abaAtiva === 'despesas' ? dbDespesas : dbCartao;
+            
+            // Calcula KPIs
+            let totalGasto = 0;
+            const categoriasSoma = {};
+            
+            dados.forEach(i => {
+                const val = parseFloat(i["Valor Total"]) || 0;
+                totalGasto += val;
+                
+                const cat = i["Categoria"] || "Outros";
+                categoriasSoma[cat] = (categoriasSoma[cat] || 0) + val;
+            });
+
+            document.getElementById('kpiTotal').innerText = formataMoeda(totalGasto);
+            document.getElementById('kpiQtd').innerText = dados.length;
+            
+            // Acha maior categoria
+            let maxCat = "-";
+            let maxVal = 0;
+            for(const [cat, val] of Object.entries(categoriasSoma)){
+                if(val > maxVal) { maxVal = val; maxCat = cat; }
+            }
+            document.getElementById('kpiCategoriaTop').innerText = maxCat;
+
+            // Lógica específica Cartão (Projeção)
+            if(abaAtiva === 'cartao') {
+                let projecaoTotal = 0;
+                dados.forEach(i => {
+                    const parcelasStr = String(i["Parcelas"] || "1/1");
+                    const partes = parcelasStr.split('/');
+                    if(partes.length === 2) {
+                        const atual = parseInt(partes[0]);
+                        const total = parseInt(partes[1]);
+                        const faltam = total - atual;
+                        if(faltam > 0) {
+                            projecaoTotal += (parseFloat(i["Valor Total"]) || 0) * faltam;
+                        }
+                    }
+                });
+                document.getElementById('kpiProjecao').innerText = formataMoeda(projecaoTotal);
+            }
+
+            renderizarTabela(dados);
+            renderizarGrafico(categoriasSoma);
+        }
+
+        function renderizarTabela(dados) {
+            const tbody = document.getElementById('tbodyDados');
+            tbody.innerHTML = '';
+            
+            dados.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition border-b border-slate-100 last:border-0";
+                
+                // Gera os <options> pro Select
+                let optionsHtml = '';
+                CATEGORIAS.forEach(c => {
+                    const sel = (item["Categoria"] === c) ? "selected" : "";
+                    optionsHtml += `<option value="${c}" ${sel}>${c}</option>`;
+                });
+
+                let htmlExtra = '';
+                if(abaAtiva === 'cartao') {
+                    htmlExtra = `<td class="px-4 py-3 text-slate-500 font-mono text-xs">${item["Parcelas"] || '-'}</td>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="px-4 py-3 whitespace-nowrap text-slate-600">${formatarDataBr(item["Data"])}</td>
+                    <td class="px-4 py-3">
+                        <div class="font-bold text-indigo-900 truncate max-w-[200px]" title="${item["Nome Simplificado"]}">${item["Nome Simplificado"] || '-'}</div>
+                        <div class="text-[10px] text-slate-400 truncate max-w-[200px]" title="${item["Nome Original"]}">${item["Nome Original"] || '-'}</div>
+                    </td>
+                    <td class="px-4 py-3 font-mono font-bold text-slate-800">${formataMoeda(item["Valor Total"])}</td>
+                    <td class="px-4 py-3">
+                        <select onchange="alterarCategoria(${item.rowId}, this.value)" class="text-xs bg-slate-100 border-none rounded py-1 px-2 text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none w-full max-w-[150px]">
+                            ${optionsHtml}
+                        </select>
+                    </td>
+                    ${htmlExtra}
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderizarGrafico(categoriasSoma) {
+            const ctx = document.getElementById('chartCategorias').getContext('2d');
+            
+            if(chartInstance) chartInstance.destroy();
+            
+            const labels = Object.keys(categoriasSoma);
+            const data = Object.values(categoriasSoma);
+            
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: [
+                            '#4f46e5', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', 
+                            '#06b6d4', '#f43f5e', '#64748b', '#84cc16'
+                        ],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: {size: 10} } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ' ' + formataMoeda(context.raw);
+                                }
+                            }
+                        }
+                    },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        // --- UTILITÁRIOS ---
+        function ordenarTabela(coluna) {
+            const db = abaAtiva === 'despesas' ? dbDespesas : dbCartao;
+            
+            direcaoOrdenacao *= -1; // Inverte direção
+            
+            db.sort((a, b) => {
+                let valA = a[coluna];
+                let valB = b[coluna];
+
+                if(coluna === 'Valor Total') {
+                    valA = parseFloat(valA) || 0;
+                    valB = parseFloat(valB) || 0;
+                    return (valA - valB) * direcaoOrdenacao;
+                }
+                
+                // Trata como texto
+                valA = String(valA || "").toLowerCase();
+                valB = String(valB || "").toLowerCase();
+                if(valA < valB) return -1 * direcaoOrdenacao;
+                if(valA > valB) return 1 * direcaoOrdenacao;
+                return 0;
+            });
+            
+            renderizarView();
+        }
+
+        function formataMoeda(valor) {
+            const num = parseFloat(valor) || 0;
+            return num.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+        }
+
+        function formatarDataBr(isoDate) {
+            if(!isoDate) return "-";
+            if(String(isoDate).includes('/')) return isoDate; // Ja tá BR
+            try {
+                const d = new Date(isoDate);
+                if(isNaN(d.getTime())) return isoDate;
+                return d.toLocaleDateString('pt-BR');
+            } catch(e) { return isoDate; }
+        }
+
+    </script>
+</body>
+</html>
