@@ -10,10 +10,14 @@
     <style>
         .fade-in { animation: fadeIn 0.4s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-        /* Scroll customizado para tabela */
         .custom-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
         .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        /* Cores Dinâmicas para Tipos */
+        .tipo-receita { color: #10b981; font-weight: bold; }
+        .tipo-despesa { color: #f43f5e; font-weight: bold; }
+        .tipo-transferencia { color: #64748b; font-style: italic; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen pb-20">
@@ -26,6 +30,7 @@
             "Casa e Contas Basicas", "Cartão de crédito", "Alimentação", "Saúde", 
             "Transporte", "educação", "diversão", "outros", "saques"
         ];
+        const TIPOS = ["Despesa", "Receita", "Transferência"];
     </script>
 
     <!-- Navbar -->
@@ -40,18 +45,37 @@
                 <button onclick="alternarAba('cartao')" id="btnAbaCartao" class="px-4 py-2 rounded font-bold transition hover:bg-indigo-600 text-indigo-100">Cartão de Crédito</button>
             </div>
 
-            <button onclick="carregarDadosNuvem()" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-full shadow-lg transition">
-                <i class="fas fa-sync-alt mr-1"></i> Sincronizar
-            </button>
+            <div class="flex gap-3 items-center">
+                <button onclick="toggleModalBancos()" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-full shadow-lg transition font-bold">
+                    <i class="fas fa-university mr-1"></i> Saldos Bancários
+                </button>
+                <button onclick="carregarDadosNuvem()" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-full shadow-lg transition">
+                    <i class="fas fa-sync-alt mr-1"></i> Sincronizar
+                </button>
+            </div>
         </div>
     </nav>
 
-    <!-- Overlay de Loading Global -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50">
-        <div class="bg-white p-6 rounded-xl shadow-2xl flex flex-col items-center">
-            <i class="fas fa-robot fa-3x text-indigo-500 animate-bounce mb-3"></i>
-            <h2 class="text-lg font-bold text-slate-700" id="loadingText">A IA está processando...</h2>
-            <p class="text-sm text-slate-500 mt-1">Isso pode levar alguns segundos.</p>
+    <!-- Overlay de Loading Global com BARRA DE PROGRESSO -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm hidden items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-sm w-full mx-4">
+            <div class="relative w-16 h-16 mb-4">
+                <div class="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
+                <div class="absolute inset-0 border-4 border-indigo-500 rounded-full border-t-transparent animate-spin"></div>
+                <i class="fas fa-robot absolute inset-0 flex items-center justify-center text-indigo-500 text-xl"></i>
+            </div>
+            
+            <h2 class="text-lg font-bold text-slate-800 text-center" id="loadingText">Preparando...</h2>
+            
+            <div class="w-full mt-6">
+                <div class="flex justify-between text-xs font-semibold text-slate-500 mb-1">
+                    <span id="loadingStatus">Iniciando</span>
+                    <span id="progressText" class="text-indigo-600">0%</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                    <div id="progressBar" class="bg-indigo-500 h-2.5 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -64,41 +88,83 @@
         <p id="insightText" class="text-xs text-emerald-700 italic font-medium leading-relaxed"></p>
     </div>
 
+    <!-- Modal de Saldos por Banco -->
+    <div id="modalBancos" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 fade-in relative">
+            <button onclick="toggleModalBancos()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><i class="fas fa-times text-xl"></i></button>
+            
+            <h2 class="text-xl font-black text-slate-800 mb-1"><i class="fas fa-university text-indigo-500 mr-2"></i>Saldos por Banco</h2>
+            <p class="text-xs text-slate-500 mb-6">Consolidação de Entradas e Saídas por instituição.</p>
+            
+            <div id="listaBancos" class="space-y-3 max-h-[60vh] overflow-y-auto custom-scroll pr-2">
+                <!-- Injetado via JS -->
+            </div>
+            
+            <div class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center">
+                <span class="font-bold text-slate-600">Patrimônio Líquido:</span>
+                <span id="patrimonioLiquido" class="text-xl font-black text-indigo-700">R$ 0,00</span>
+            </div>
+        </div>
+    </div>
+
     <div class="container mx-auto p-4 mt-6">
         
-        <!-- Área de Upload Rápido -->
+        <!-- Área de Upload Rápido Atualizada -->
         <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
                 <h2 class="text-lg font-bold text-slate-800 mb-1" id="tituloUpload">Analisar Novo Extrato</h2>
-                <p class="text-sm text-slate-500">Envie um PDF ou Imagem. A IA organizará tudo magicamente.</p>
+                <p class="text-sm text-slate-500">A IA classificará Receitas, Despesas e Transferências.</p>
             </div>
-            <div class="flex gap-3">
+            <div class="flex flex-col sm:flex-row gap-3 items-center w-full md:w-auto">
+                
+                <!-- Seleção de Banco -->
+                <div class="relative w-full sm:w-auto">
+                    <span class="absolute left-3 top-3 text-slate-400"><i class="fas fa-building"></i></span>
+                    <select id="bancoUpload" class="pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium focus:ring-2 focus:ring-indigo-500 outline-none w-full appearance-none cursor-pointer">
+                        <option value="Itaú">Itaú</option>
+                        <option value="Bradesco">Bradesco</option>
+                        <option value="Nubank">Nubank</option>
+                        <option value="Santander">Santander</option>
+                        <option value="Inter">Banco Inter</option>
+                        <option value="Caixa">Caixa</option>
+                        <option value="BB">Banco do Brasil</option>
+                        <option value="Dinheiro Fisico">Dinheiro Físico</option>
+                    </select>
+                    <span class="absolute right-3 top-3 text-slate-400 pointer-events-none"><i class="fas fa-chevron-down text-xs"></i></span>
+                </div>
+
                 <input type="file" id="fileInput" accept="image/*, application/pdf" class="hidden" onchange="processarArquivo(this)">
-                <button onclick="document.getElementById('fileInput').click()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg shadow-md font-bold transition flex items-center">
+                <button onclick="document.getElementById('fileInput').click()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg shadow-md font-bold transition flex items-center w-full justify-center sm:w-auto whitespace-nowrap">
                     <i class="fas fa-cloud-upload-alt mr-2 text-xl"></i> Enviar Arquivo
                 </button>
             </div>
         </div>
 
-        <!-- DASHBOARD (KPIs) -->
+        <!-- DASHBOARD (KPIs) Atualizado com Saldos -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-indigo-500">
-                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Gasto (Mês)</p>
-                <h3 class="text-2xl font-black text-slate-800" id="kpiTotal">R$ 0,00</h3>
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-rose-500 relative">
+                <i class="fas fa-arrow-down absolute right-4 top-5 text-rose-100 text-3xl"></i>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Despesas</p>
+                <h3 class="text-2xl font-black text-rose-600" id="kpiDespesa">R$ 0,00</h3>
             </div>
-            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-rose-500">
-                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Maior Categoria</p>
-                <h3 class="text-xl font-bold text-slate-800 truncate" id="kpiCategoriaTop">-</h3>
+            
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-emerald-500 relative">
+                <i class="fas fa-arrow-up absolute right-4 top-5 text-emerald-100 text-3xl"></i>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Receitas</p>
+                <h3 class="text-2xl font-black text-emerald-600" id="kpiReceita">R$ 0,00</h3>
             </div>
-            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-emerald-500">
-                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Transações</p>
-                <h3 class="text-2xl font-black text-slate-800" id="kpiQtd">0</h3>
+
+            <div class="bg-gradient-to-r from-indigo-500 to-indigo-700 p-5 rounded-xl shadow-md text-white border-l-4 border-l-indigo-300 relative">
+                <p class="text-xs font-bold text-indigo-100 uppercase tracking-wider mb-1">Balanço do Mês Atual</p>
+                <h3 class="text-2xl font-black text-white" id="kpiBalancoMes">R$ 0,00</h3>
+                <p class="text-[10px] text-indigo-200 mt-1">O que sobrou neste mês</p>
             </div>
-            <div id="kpiCartaoExtra" class="bg-gradient-to-br from-indigo-800 to-purple-900 p-5 rounded-xl shadow-md text-white hidden relative overflow-hidden">
+
+            <div id="kpiCartaoExtra" class="bg-gradient-to-br from-purple-800 to-slate-900 p-5 rounded-xl shadow-md text-white hidden relative overflow-hidden">
                 <i class="fas fa-credit-card absolute -right-2 -bottom-4 text-6xl opacity-20"></i>
-                <p class="text-xs font-bold text-indigo-200 uppercase tracking-wider mb-1">Faturas Futuras (Projeção)</p>
+                <p class="text-xs font-bold text-purple-200 uppercase tracking-wider mb-1">Faturas Futuras</p>
                 <h3 class="text-2xl font-black text-white" id="kpiProjecao">R$ 0,00</h3>
-                <p class="text-[10px] text-indigo-300 mt-1">Baseado em parcelas pendentes</p>
+                <p class="text-[10px] text-purple-300 mt-1">Projeção de parcelas</p>
             </div>
         </div>
 
@@ -107,7 +173,7 @@
             
             <!-- Coluna Esquerda: Gráfico -->
             <div class="lg:col-span-1 bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                <h3 class="font-bold text-slate-700 mb-4 border-b pb-2">Despesas por Categoria</h3>
+                <h3 class="font-bold text-slate-700 mb-4 border-b pb-2">Composição de Gastos</h3>
                 <div class="relative flex-1 min-h-[300px]">
                     <canvas id="chartCategorias"></canvas>
                 </div>
@@ -125,9 +191,11 @@
                         <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10 shadow-sm">
                             <tr>
                                 <th class="px-4 py-3 cursor-pointer hover:bg-slate-200" onclick="ordenarTabela('Data')">Data <i class="fas fa-sort ml-1"></i></th>
-                                <th class="px-4 py-3 cursor-pointer hover:bg-slate-200" onclick="ordenarTabela('Nome Simplificado')">Local/Item <i class="fas fa-sort ml-1"></i></th>
-                                <th class="px-4 py-3 cursor-pointer hover:bg-slate-200" onclick="ordenarTabela('Valor Total')">Total (R$) <i class="fas fa-sort ml-1"></i></th>
-                                <th class="px-4 py-3">Categoria (Auto)</th>
+                                <th class="px-4 py-3 cursor-pointer hover:bg-slate-200" onclick="ordenarTabela('Nome Simplificado')">Descrição <i class="fas fa-sort ml-1"></i></th>
+                                <th class="px-4 py-3">Banco</th>
+                                <th class="px-4 py-3 cursor-pointer hover:bg-slate-200" onclick="ordenarTabela('Valor Total')">Valor <i class="fas fa-sort ml-1"></i></th>
+                                <th class="px-4 py-3">Tipo</th>
+                                <th class="px-4 py-3">Categoria</th>
                                 <th id="thParcelas" class="px-4 py-3 hidden">Parcelas</th>
                             </tr>
                         </thead>
@@ -144,9 +212,13 @@
     <script>
         let dbDespesas = [];
         let dbCartao = [];
-        let abaAtiva = 'despesas'; // 'despesas' ou 'cartao'
+        let abaAtiva = 'despesas'; 
         let chartInstance = null;
         let direcaoOrdenacao = 1;
+
+        // Variáveis da Barra de Progresso
+        let progressInterval;
+        let progressoAtual = 0;
 
         // --- INICIALIZAÇÃO ---
         window.onload = () => {
@@ -157,11 +229,15 @@
             }
         };
 
-        // --- CONTROLE DE UI ---
+        // --- CONTROLES DE INTERFACE ---
+        function toggleModalBancos() {
+            const modal = document.getElementById('modalBancos');
+            modal.classList.toggle('hidden');
+            if(!modal.classList.contains('hidden')) renderizarSaldosBancos();
+        }
+
         function alternarAba(aba) {
             abaAtiva = aba;
-            
-            // Estilo dos botões
             const btnDesp = document.getElementById('btnAbaDespesas');
             const btnCart = document.getElementById('btnAbaCartao');
             
@@ -172,6 +248,7 @@
                 document.getElementById('tituloTabela').innerText = "Extrato Detalhado (Conta Corrente)";
                 document.getElementById('thParcelas').classList.add('hidden');
                 document.getElementById('kpiCartaoExtra').classList.add('hidden');
+                document.getElementById('bancoUpload').parentElement.classList.remove('hidden'); // Mostra select banco
             } else {
                 btnCart.className = "px-4 py-2 rounded font-bold transition bg-white text-indigo-700 shadow";
                 btnDesp.className = "px-4 py-2 rounded font-bold transition hover:bg-indigo-600 text-indigo-100";
@@ -179,14 +256,37 @@
                 document.getElementById('tituloTabela').innerText = "Fatura Detalhada";
                 document.getElementById('thParcelas').classList.remove('hidden');
                 document.getElementById('kpiCartaoExtra').classList.remove('hidden');
+                document.getElementById('bancoUpload').parentElement.classList.add('hidden'); // Esconde select banco
             }
-
             renderizarView();
         }
 
-        function mostrarLoading(mostrar, texto = "Processando...") {
-            document.getElementById('loadingText').innerText = texto;
+        function controleLoading(mostrar, titulo = "Processando...", status = "") {
             document.getElementById('loadingOverlay').style.display = mostrar ? 'flex' : 'none';
+            document.getElementById('loadingText').innerText = titulo;
+            if(status) document.getElementById('loadingStatus').innerText = status;
+        }
+
+        function atualizarProgresso(pct, statusTexto) {
+            progressoAtual = pct;
+            document.getElementById('progressBar').style.width = pct + '%';
+            document.getElementById('progressText').innerText = Math.floor(pct) + '%';
+            if(statusTexto) document.getElementById('loadingStatus').innerText = statusTexto;
+        }
+
+        function iniciarBarraIA() {
+            if (progressInterval) clearInterval(progressInterval);
+            progressInterval = setInterval(() => {
+                if (progressoAtual < 40) atualizarProgresso(progressoAtual + 2, "Enviando dados para o Google...");
+                else if (progressoAtual < 70) atualizarProgresso(progressoAtual + 0.8, "A IA está lendo o documento...");
+                else if (progressoAtual < 95) atualizarProgresso(progressoAtual + 0.3, "Categorizando despesas e gerando insights...");
+            }, 500);
+        }
+
+        function finalizarBarraIA() {
+            if (progressInterval) clearInterval(progressInterval);
+            atualizarProgresso(100, "Concluído!");
+            return new Promise(resolve => setTimeout(() => { controleLoading(false); resolve(); }, 500));
         }
 
         function mostrarInsight(texto) {
@@ -194,74 +294,75 @@
             document.getElementById('insightText').innerText = texto;
             const widget = document.getElementById('insightWidget');
             widget.classList.remove('hidden');
-            // Esconde auto
             setTimeout(() => widget.classList.add('hidden'), 15000);
         }
 
-        // --- COMUNICAÇÃO COM BACKEND (SHEETS) ---
+        // --- COMUNICAÇÃO COM BACKEND ---
         async function carregarDadosNuvem() {
-            mostrarLoading(true, "Sincronizando banco de dados...");
+            controleLoading(true, "Sincronizando...", "Baixando dados da nuvem...");
+            atualizarProgresso(50);
             try {
                 const res = await fetch(API_URL);
                 const json = await res.json();
-                
                 dbDespesas = json.despesas || [];
                 dbCartao = json.cartao || [];
-                
                 renderizarView();
+                atualizarProgresso(100, "Sincronizado!");
             } catch (erro) {
                 console.error(erro);
-                alert("Erro ao conectar com o banco de dados. Verifique a URL e o CORS.");
+                alert("Erro ao conectar com o banco de dados. Verifique a URL.");
             }
-            mostrarLoading(false);
+            setTimeout(() => controleLoading(false), 300);
         }
 
-        // --- UPLOAD COM IA (GEMINI) ---
         async function processarArquivo(input) {
             const file = input.files[0];
             if (!file) return;
 
-            mostrarLoading(true, "Lendo documento. A IA está analisando...");
+            const bancoSelecionado = document.getElementById('bancoUpload').value;
+
+            controleLoading(true, "Analisando Documento", "Lendo arquivo local...");
+            atualizarProgresso(5);
 
             try {
                 const base64Ful = await toBase64(file);
-                // Separar o prefixo data:mime... do base64 real
+                atualizarProgresso(15, "Convertendo arquivo...");
+                
                 const [prefix, data64] = base64Ful.split(',');
                 const mime = prefix.match(/:(.*?);/)[1];
 
                 const payload = {
                     action: abaAtiva === 'despesas' ? 'upload_extrato' : 'upload_fatura',
                     mimeType: mime,
-                    arquivoBase64: data64
+                    arquivoBase64: data64,
+                    banco: bancoSelecionado
                 };
 
-                // Envio POST "Cego" com mode no-cors para evitar bloqueio CORS do Google em arquivos pesados
-                // Opcional: Se seu backend retornar JSON perfeitamente, pode tentar sem no-cors, 
-                // mas para Uploads robustos no SheetBackend, no-cors evita muita dor de cabeça.
-                // Como queremos a resposta (Insight), vamos tentar CORS normal primeiro.
-                
+                atualizarProgresso(20, "Conectando ao modelo de IA...");
+                iniciarBarraIA();
+
                 const res = await fetch(API_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Truque CORS
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(payload)
                 });
                 
                 const result = await res.json();
+                await finalizarBarraIA();
                 
                 if (result.status === "SUCESSO") {
                     mostrarInsight(result.insight);
-                    await carregarDadosNuvem(); // Recarrega os dados fresquinhos
+                    await carregarDadosNuvem(); 
                 } else {
                     alert("A IA teve dificuldades: " + result.msg);
                 }
-
             } catch (e) {
                 console.error(e);
-                alert("Falha no upload. O arquivo pode ser muito grande ou a API demorou demais.");
+                if (progressInterval) clearInterval(progressInterval);
+                controleLoading(false);
+                alert("Falha no upload. A API demorou demais ou houve erro de rede.");
             }
-            
-            input.value = ''; // Limpa o input
-            mostrarLoading(false);
+            input.value = ''; 
         }
 
         function toBase64(file) {
@@ -273,24 +374,23 @@
             });
         }
 
-        // --- ATUALIZAÇÃO INLINE ---
-        async function alterarCategoria(rowId, novaCategoria) {
+        // --- ATUALIZAÇÕES INLINE (CATEGORIA E TIPO) ---
+        function atualizarCampo(rowId, campo, novoValor) {
+            const db = abaAtiva === 'despesas' ? dbDespesas : dbCartao;
             const abaNome = abaAtiva === 'despesas' ? 'DespesasGerais' : 'CartaoCredito';
             
-            // Atualiza localmente para resposta rápida
-            const db = abaAtiva === 'despesas' ? dbDespesas : dbCartao;
             const item = db.find(i => i.rowId === rowId);
-            if(item) item["Categoria"] = novaCategoria;
+            if(item) item[campo] = novoValor;
             
-            renderizarView(); // Atualiza gráfico instantaneamente
+            renderizarView(); 
             
-            // Envia para o servidor em background
             const payload = {
-                action: 'update_categoria',
+                action: campo === 'Categoria' ? 'update_categoria' : 'update_tipo',
                 aba: abaNome,
-                rowId: rowId,
-                novaCategoria: novaCategoria
+                rowId: rowId
             };
+            if(campo === 'Categoria') payload.novaCategoria = novoValor;
+            if(campo === 'Tipo') payload.novoTipo = novoValor;
 
             fetch(API_URL, {
                 method: 'POST',
@@ -299,34 +399,109 @@
             }).catch(e => console.error("Erro background:", e));
         }
 
-        // --- RENDERIZAÇÃO E CÁLCULOS ---
+        // --- CÁLCULOS E RENDERIZAÇÃO ---
+        function renderizarSaldosBancos() {
+            const container = document.getElementById('listaBancos');
+            container.innerHTML = '';
+            
+            const saldos = {};
+            let patrimonioLiquido = 0;
+
+            // Une despesas e cartões para consolidar saldos (Cartão entra como despesa de crédito)
+            const todosDados = [...dbDespesas, ...dbCartao.map(c => ({...c, Tipo: 'Despesa'}))];
+
+            todosDados.forEach(i => {
+                const banco = i["Banco"] || "Não Informado";
+                const tipo = i["Tipo"] || "Despesa";
+                const valor = parseFloat(i["Valor Total"]) || 0;
+
+                if (!saldos[banco]) saldos[banco] = 0;
+
+                if (tipo === "Receita") {
+                    saldos[banco] += valor;
+                    patrimonioLiquido += valor;
+                } else if (tipo === "Despesa") {
+                    saldos[banco] -= valor;
+                    patrimonioLiquido -= valor;
+                }
+                // Transferências não afetam o saldo geral consolidado, 
+                // mas na vida real afetariam contas individuais se lançadas como + e - separados.
+                // Pela lógica simplificada da IA: Transferência = neutro na soma, pois é só movimento interno.
+            });
+
+            for (const [banco, saldo] of Object.entries(saldos)) {
+                const isPositivo = saldo >= 0;
+                container.innerHTML += `
+                    <div class="flex justify-between items-center p-3 bg-slate-50 rounded border border-slate-100">
+                        <div class="flex items-center">
+                            <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 mr-3">
+                                <i class="fas fa-building text-sm"></i>
+                            </div>
+                            <span class="font-bold text-slate-700">${banco}</span>
+                        </div>
+                        <span class="font-mono font-bold ${isPositivo ? 'text-emerald-600' : 'text-rose-600'}">
+                            ${formataMoeda(saldo)}
+                        </span>
+                    </div>
+                `;
+            }
+
+            const plElement = document.getElementById('patrimonioLiquido');
+            plElement.innerText = formataMoeda(patrimonioLiquido);
+            plElement.className = `text-xl font-black ${patrimonioLiquido >= 0 ? 'text-indigo-700' : 'text-rose-600'}`;
+        }
+
+        function getMesAnoAtual() {
+            const hoje = new Date();
+            return `${hoje.getMonth()}-${hoje.getFullYear()}`;
+        }
+
         function renderizarView() {
             const dados = abaAtiva === 'despesas' ? dbDespesas : dbCartao;
             
-            // Calcula KPIs
-            let totalGasto = 0;
+            let totalDespesa = 0;
+            let totalReceita = 0;
+            let balancoMesAtual = 0;
+            const mesAtualChave = getMesAnoAtual();
+            
             const categoriasSoma = {};
             
             dados.forEach(i => {
                 const val = parseFloat(i["Valor Total"]) || 0;
-                totalGasto += val;
-                
+                const tipo = i["Tipo"] || "Despesa";
                 const cat = i["Categoria"] || "Outros";
-                categoriasSoma[cat] = (categoriasSoma[cat] || 0) + val;
+
+                // Pega mês do item
+                let isMesAtual = false;
+                if(i["Data"]) {
+                    try {
+                        let dObj = String(i["Data"]).includes('/') 
+                            ? new Date(i["Data"].split('/').reverse().join('-')) 
+                            : new Date(i["Data"]);
+                        if(`${dObj.getMonth()}-${dObj.getFullYear()}` === mesAtualChave) {
+                            isMesAtual = true;
+                        }
+                    } catch(e) {}
+                }
+
+                if (tipo === "Despesa") {
+                    totalDespesa += val;
+                    if(isMesAtual) balancoMesAtual -= val;
+                    categoriasSoma[cat] = (categoriasSoma[cat] || 0) + val;
+                } else if (tipo === "Receita") {
+                    totalReceita += val;
+                    if(isMesAtual) balancoMesAtual += val;
+                }
             });
 
-            document.getElementById('kpiTotal').innerText = formataMoeda(totalGasto);
-            document.getElementById('kpiQtd').innerText = dados.length;
+            document.getElementById('kpiDespesa').innerText = formataMoeda(totalDespesa);
+            document.getElementById('kpiReceita').innerText = formataMoeda(totalReceita);
             
-            // Acha maior categoria
-            let maxCat = "-";
-            let maxVal = 0;
-            for(const [cat, val] of Object.entries(categoriasSoma)){
-                if(val > maxVal) { maxVal = val; maxCat = cat; }
-            }
-            document.getElementById('kpiCategoriaTop').innerText = maxCat;
+            const elBalanco = document.getElementById('kpiBalancoMes');
+            elBalanco.innerText = formataMoeda(balancoMesAtual);
+            if(balancoMesAtual < 0) elBalanco.classList.replace('text-white', 'text-rose-300'); // Fica avermelhado se negativo
+            else elBalanco.classList.replace('text-rose-300', 'text-white');
 
-            // Lógica específica Cartão (Projeção)
             if(abaAtiva === 'cartao') {
                 let projecaoTotal = 0;
                 dados.forEach(i => {
@@ -336,9 +511,7 @@
                         const atual = parseInt(partes[0]);
                         const total = parseInt(partes[1]);
                         const faltam = total - atual;
-                        if(faltam > 0) {
-                            projecaoTotal += (parseFloat(i["Valor Total"]) || 0) * faltam;
-                        }
+                        if(faltam > 0) projecaoTotal += (parseFloat(i["Valor Total"]) || 0) * faltam;
                     }
                 });
                 document.getElementById('kpiProjecao').innerText = formataMoeda(projecaoTotal);
@@ -356,12 +529,25 @@
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-50 transition border-b border-slate-100 last:border-0";
                 
-                // Gera os <options> pro Select
-                let optionsHtml = '';
+                // Select de Categorias
+                let optionsCat = '';
                 CATEGORIAS.forEach(c => {
                     const sel = (item["Categoria"] === c) ? "selected" : "";
-                    optionsHtml += `<option value="${c}" ${sel}>${c}</option>`;
+                    optionsCat += `<option value="${c}" ${sel}>${c}</option>`;
                 });
+
+                // Select de Tipos
+                let optionsTipo = '';
+                TIPOS.forEach(t => {
+                    const sel = (item["Tipo"] === t) ? "selected" : "";
+                    optionsTipo += `<option value="${t}" ${sel}>${t}</option>`;
+                });
+
+                // Cores do Valor baseado no Tipo
+                let corValor = "text-slate-800";
+                if(item["Tipo"] === "Receita") corValor = "text-emerald-600";
+                if(item["Tipo"] === "Despesa") corValor = "text-rose-600";
+                if(item["Tipo"] === "Transferência") corValor = "text-slate-400";
 
                 let htmlExtra = '';
                 if(abaAtiva === 'cartao') {
@@ -374,10 +560,16 @@
                         <div class="font-bold text-indigo-900 truncate max-w-[200px]" title="${item["Nome Simplificado"]}">${item["Nome Simplificado"] || '-'}</div>
                         <div class="text-[10px] text-slate-400 truncate max-w-[200px]" title="${item["Nome Original"]}">${item["Nome Original"] || '-'}</div>
                     </td>
-                    <td class="px-4 py-3 font-mono font-bold text-slate-800">${formataMoeda(item["Valor Total"])}</td>
+                    <td class="px-4 py-3 text-xs font-bold text-slate-500"><i class="fas fa-university text-[10px] mr-1 opacity-50"></i>${item["Banco"] || '-'}</td>
+                    <td class="px-4 py-3 font-mono font-bold ${corValor}">${formataMoeda(item["Valor Total"])}</td>
                     <td class="px-4 py-3">
-                        <select onchange="alterarCategoria(${item.rowId}, this.value)" class="text-xs bg-slate-100 border-none rounded py-1 px-2 text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none w-full max-w-[150px]">
-                            ${optionsHtml}
+                        <select onchange="atualizarCampo(${item.rowId}, 'Tipo', this.value)" class="text-xs bg-transparent border border-slate-200 rounded py-1 px-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            ${optionsTipo}
+                        </select>
+                    </td>
+                    <td class="px-4 py-3">
+                        <select onchange="atualizarCampo(${item.rowId}, 'Categoria', this.value)" class="text-xs bg-slate-100 border-none rounded py-1 px-2 text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none w-full max-w-[130px]">
+                            ${optionsCat}
                         </select>
                     </td>
                     ${htmlExtra}
@@ -388,7 +580,6 @@
 
         function renderizarGrafico(categoriasSoma) {
             const ctx = document.getElementById('chartCategorias').getContext('2d');
-            
             if(chartInstance) chartInstance.destroy();
             
             const labels = Object.keys(categoriasSoma);
@@ -400,56 +591,34 @@
                     labels: labels,
                     datasets: [{
                         data: data,
-                        backgroundColor: [
-                            '#4f46e5', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', 
-                            '#06b6d4', '#f43f5e', '#64748b', '#84cc16'
-                        ],
-                        borderWidth: 0,
-                        hoverOffset: 4
+                        backgroundColor: ['#4f46e5', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f43f5e', '#64748b', '#84cc16'],
+                        borderWidth: 0, hoverOffset: 4
                     }]
                 },
                 options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     plugins: {
                         legend: { position: 'bottom', labels: { boxWidth: 12, font: {size: 10} } },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return ' ' + formataMoeda(context.raw);
-                                }
-                            }
-                        }
-                    },
-                    cutout: '70%'
+                        tooltip: { callbacks: { label: function(context) { return ' ' + formataMoeda(context.raw); } } }
+                    }, cutout: '70%'
                 }
             });
         }
 
-        // --- UTILITÁRIOS ---
         function ordenarTabela(coluna) {
             const db = abaAtiva === 'despesas' ? dbDespesas : dbCartao;
-            
-            direcaoOrdenacao *= -1; // Inverte direção
-            
+            direcaoOrdenacao *= -1; 
             db.sort((a, b) => {
-                let valA = a[coluna];
-                let valB = b[coluna];
-
+                let valA = a[coluna]; let valB = b[coluna];
                 if(coluna === 'Valor Total') {
-                    valA = parseFloat(valA) || 0;
-                    valB = parseFloat(valB) || 0;
+                    valA = parseFloat(valA) || 0; valB = parseFloat(valB) || 0;
                     return (valA - valB) * direcaoOrdenacao;
                 }
-                
-                // Trata como texto
-                valA = String(valA || "").toLowerCase();
-                valB = String(valB || "").toLowerCase();
+                valA = String(valA || "").toLowerCase(); valB = String(valB || "").toLowerCase();
                 if(valA < valB) return -1 * direcaoOrdenacao;
                 if(valA > valB) return 1 * direcaoOrdenacao;
                 return 0;
             });
-            
             renderizarView();
         }
 
@@ -460,14 +629,13 @@
 
         function formatarDataBr(isoDate) {
             if(!isoDate) return "-";
-            if(String(isoDate).includes('/')) return isoDate; // Ja tá BR
+            if(String(isoDate).includes('/')) return isoDate; 
             try {
                 const d = new Date(isoDate);
                 if(isNaN(d.getTime())) return isoDate;
                 return d.toLocaleDateString('pt-BR');
             } catch(e) { return isoDate; }
         }
-
     </script>
 </body>
 </html>
